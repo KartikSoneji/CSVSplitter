@@ -32,7 +32,7 @@ public class Main{
 			System.err.println("Error! n must be an integer, is: " + args[1]);
 			return;
 		}
-		if(n == 0){
+		if(n <= 0){
 			System.out.println("Error! n must be greater than 0.");
 			return;
 		}
