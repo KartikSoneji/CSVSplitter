@@ -9,7 +9,7 @@ public class CsvSplitter{
 	private File input;
 	private int n;
 	
-	private CSVRecord headers;
+	private List<String> headers;
 	private List<CSVRecord> records;
 	
 	public ExecutorService executor;
@@ -25,10 +25,14 @@ public class CsvSplitter{
 	}
 	
 	public void loadFile() throws IOException{
-		CSVParser parser = CSVParser.parse(input, java.nio.charset.StandardCharsets.UTF_8, CSVFormat.DEFAULT);
+		CSVParser parser = CSVParser.parse(
+			input,
+			java.nio.charset.StandardCharsets.UTF_8,
+			CSVFormat.DEFAULT.withFirstRecordAsHeader()
+		);
 		records = parser.getRecords();
 		if(records.size() > 0)
-			headers = records.remove(0);
+			headers = parser.getHeaderNames();
 		parser.close();
 	}
 	
@@ -40,7 +44,7 @@ public class CsvSplitter{
 		
 		String baseName = input.getName();
 		if(baseName.endsWith(".csv"))
-			baseName = baseName.substring(0, baseName.length() - 3);
+			baseName = baseName.substring(0, baseName.length() - 4);
 		
 		int rows = records.size()/n;
 		if(rows == 0)
@@ -51,31 +55,38 @@ public class CsvSplitter{
 			if(i == n - 1)
 				to = records.size();
 			
-			executor.submit(new ChunkWriter(from, to, baseName + (i + 1) + ".csv"));	
+			executor.submit(new ChunkWriter(
+				headers,
+				records.subList(from, to),
+				new File(input, baseName + "." + (i + 1) + ".csv"))
+			);
 		}
+	}	
+}
+
+class ChunkWriter implements Runnable{
+	List<String> headers;
+	List<CSVRecord> records;
+	File output;
+	
+	public ChunkWriter(List<String> headers, List<CSVRecord> records, File output){
+		this.headers = headers;
+		this.records = records;
+		this.output = output;
 	}
 	
-	private class ChunkWriter implements Runnable{
-		int from, to;
-		String outputName;
-		
-		public ChunkWriter(int from, int to, String outputName){			
-			this.from = from;
-			this.to = to;
-			this.outputName = outputName;
+	public void run(){
+		try(
+			CSVPrinter printer = new CSVPrinter(new FileWriter(output), CSVFormat.EXCEL)
+		){
+			printer.printRecord(headers);
+			for(CSVRecord record:records)
+				printer.printRecord(record);
+			printer.close(true);
 		}
-		
-		public void run(){
-			try{
-				CSVPrinter printer = new CSVPrinter(new FileWriter(outputName), CSVFormat.EXCEL);
-				printer.printRecord(headers);
-				for(int i = from; i < to && i < records.size(); i++)
-					printer.printRecord(records.get(i));
-				printer.close(true);
-			}
-			catch(IOException e){
-				e.printStackTrace();
-			}
+		catch(IOException e){
+			System.err.printf("Error: could not writing to file '%s'\n", output);
+			System.out.println(e.getMessage().indent(4));
 		}
 	}
 }
